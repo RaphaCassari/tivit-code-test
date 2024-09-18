@@ -3,7 +3,7 @@
     <q-card class="q-pa-md" style="max-width: 600px;">
       <!-- Header com mensagem e avatar -->
       <q-card-section class="row items-center q-pb-md">
-        <q-avatar size="56px" color="primary" icon="admin_panel_settings" />
+        <q-avatar size="56px" color="secondary" icon="admin_panel_settings" />
         <div class="q-ml-md">
           <div class="text-h5">{{ sanitize(jsonData.message) }}</div>
         </div>
@@ -14,7 +14,7 @@
         <q-list bordered>
           <q-item>
             <q-item-section avatar>
-              <q-icon name="person" />
+              <q-icon name="admin_panel_settings" />
             </q-item-section>
             <q-item-section>
               <q-item-label><strong>Name:</strong> {{ sanitize(jsonData.data.name) }}</q-item-label>
@@ -29,20 +29,15 @@
 
       <!-- Lista de relatórios -->
       <q-card-section>
-        <div class="text-h6 q-mb-md">Recent Reports</div>
+        <div class="text-h6 q-mb-md">Reports</div>
         <q-list bordered>
           <q-item v-for="report in jsonData.data.reports" :key="report.id" clickable>
             <q-item-section avatar>
-              <q-icon :name="getStatusIcon(report.status)" />
+              <q-icon name="description" />
             </q-item-section>
             <q-item-section>
               <q-item-label>{{ sanitize(report.title) }}</q-item-label>
-              <q-item-label caption :class="getStatusClass(report.status)">
-                Status: {{ sanitize(report.status) }}
-              </q-item-label>
-            </q-item-section>
-            <q-item-section side>
-              <q-icon name="chevron_right" />
+              <q-item-label caption>Status: {{ sanitize(report.status) }}</q-item-label>
             </q-item-section>
           </q-item>
         </q-list>
@@ -52,12 +47,12 @@
       <q-card-section>
         <div class="text-h6 q-mb-md">Recommended Reports</div>
         <q-chip
-          v-for="(recommendation, index) in jsonData.recommendations"
+          v-for="(recommendation, index) in recommendations"
           :key="index"
           class="q-mb-xs"
-          color="primary"
+          color="secondary"
           text-color="white"
-          icon="assessment"
+          icon="star"
         >
           {{ sanitize(recommendation) }}
         </q-chip>
@@ -67,21 +62,22 @@
 </template>
 
 <script>
+import axios from 'axios';
+
 export default {
   data() {
     return {
       jsonData: {
-        message: "Hello, admin!",
+        message: "",
         data: {
-          name: "Admin Master",
-          email: "admin@example.com",
-          reports: [
-            { id: 1, title: "Monthly Sales", status: "Completed" },
-            { id: 2, title: "User Activity", status: "Pending" },
-          ],
+          name: "",
+          email: "",
+          reports: [],
         },
-        recommendations: ["User Activity", "Monthly Sales"],
       },
+      recommendations: [],
+      loading: true,
+      error: null,
     };
   },
   methods: {
@@ -91,14 +87,31 @@ export default {
       div.textContent = value;
       return div.innerHTML;
     },
-    // Determina o ícone com base no status do relatório
-    getStatusIcon(status) {
-      return status === "Completed" ? "check_circle" : "hourglass_empty";
+    // Método para buscar os dados do administrador da API
+    async fetchAdminData() {
+      try {
+        const response = await axios.get('http://localhost:8001/sync-admin?username=admin&password=adminpass');
+        this.jsonData = response.data;
+        await this.fetchRecommendations(this.jsonData.data.name);
+        this.loading = false;
+      } catch (error) {
+        this.error = 'Failed to load admin data.';
+        this.loading = false;
+      }
     },
-    // Aplica classes diferentes com base no status
-    getStatusClass(status) {
-      return status === "Completed" ? "text-positive" : "text-warning";
+    // Método para buscar recomendações da API
+    async fetchRecommendations(adminName) {
+      try {
+        const response = await axios.get(`http://localhost:8001/admin-recommendations?name=${encodeURIComponent(adminName)}`);
+        this.recommendations = response.data.recommendations;
+      } catch (error) {
+        this.error = 'Failed to load recommendations.';
+      }
     }
+  },
+  mounted() {
+    // Busca os dados da API assim que o componente for montado
+    this.fetchAdminData();
   }
 };
 </script>

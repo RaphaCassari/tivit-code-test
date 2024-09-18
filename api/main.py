@@ -1,6 +1,7 @@
-from fastapi import FastAPI, HTTPException, Depends, status
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.security import OAuth2PasswordBearer
-from pydantic import BaseModel, Field, EmailStr, ValidationError
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 from typing import List
 import requests
 from neo4j import GraphDatabase
@@ -9,16 +10,47 @@ from datetime import datetime, timedelta
 from urllib.parse import quote, unquote
 import os
 
-# Carregar variáveis sensíveis de ambiente
-NEO4J_URI = os.getenv("NEO4J_URI", "neo4j+s://a4051114.databases.neo4j.io")
-NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
-NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "super-secure-password")
-SECRET_KEY = os.getenv("SECRET_KEY", "your-very-secret-key")
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+from dotenv import load_dotenv
+import os
+
+load_dotenv()  # Carrega variáveis do .env
+
+NEO4J_URI = os.getenv("NEO4J_URI")
+NEO4J_USER = os.getenv("NEO4J_USER")
+NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
+SECRET_KEY = os.getenv("SECRET_KEY")
+
+
+# Configurações Neo4j
+#NEO4J_URI = os.getenv("NEO4J_URI", "neo4j+s://a4051114.databases.neo4j.io")
+#NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
+#NEO4J_PASSWORD = os.getenv(
+#    "NEO4J_PASSWORD", "SRr0ul04xAaSdhOkmCvgFHjyZKaYFNOZXiE03JZXptA")
+
+# Configuração da API Fake
 FAKE_API_URL = os.getenv("FAKE_API_URL", "http://localhost:8000")
 
+# Configurações do JWT
+#SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
+
 app = FastAPI()
+
+# Configuração de CORS
+origins = [
+    "http://localhost",
+    "http://localhost:8081",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,  # Permitir origens específicas
+    allow_credentials=True,
+    allow_methods=["*"],  # Permitir todos os métodos HTTP
+    allow_headers=["*"],  # Permitir todos os cabeçalhos
+)
+
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 # Cliente Neo4j
@@ -50,27 +82,61 @@ class Neo4jClient:
             result = session.read_transaction(self._recommend_reports, name)
             return result
 
+    def populate_db(self):
+        with self.driver.session() as session:
+            session.write_transaction(self._create_sample_data)
+
     @staticmethod
     def _create_user(tx, user_data):
-        tx.run("""
+        tx.run(
+            """
             MERGE (u:User {name: $name})
             SET u.email = $email
             FOREACH (purchase IN $purchases | 
                 MERGE (p:Purchase {id: purchase.id})
                 SET p.item = purchase.item, p.price = purchase.price
                 MERGE (u)-[:MADE]->(p))
-            """, name=user_data["name"], email=user_data["email"], purchases=user_data["purchases"])
+            """,
+            name=user_data["name"],
+            email=user_data["email"],
+            purchases=user_data["purchases"]
+        )
 
     @staticmethod
     def _create_admin(tx, admin_data):
-        tx.run("""
+        tx.run(
+            """
             MERGE (a:Admin {name: $name})
             SET a.email = $email
             FOREACH (report IN $reports |
                 MERGE (r:Report {id: report.id})
                 SET r.title = report.title, r.status = report.status
                 MERGE (a)-[:CREATED]->(r))
-            """, name=admin_data["name"], email=admin_data["email"], reports=admin_data["reports"])
+            """,
+            name=admin_data["name"],
+            email=admin_data["email"],
+            reports=admin_data["reports"]
+        )
+
+    @staticmethod
+    def _create_sample_data(tx):
+        tx.run(
+            """
+            MERGE (u:User {name: 'John Doe'})
+            SET u.email = 'john@example.com'
+            MERGE (p1:Purchase {id: 1, item: 'Laptop', price: 2500})
+            MERGE (p2:Purchase {id: 2, item: 'Smartphone', price: 1200})
+            MERGE (u)-[:MADE]->(p1)
+            MERGE (u)-[:MADE]->(p2)
+
+            MERGE (a:Admin {name: 'Admin Master'})
+            SET a.email = 'admin@example.com'
+            MERGE (r1:Report {id: 1, title: 'Monthly Sales', status: 'Completed'})
+            MERGE (r2:Report {id: 2, title: 'User Activity', status: 'Pending'})
+            MERGE (a)-[:CREATED]->(r1)
+            MERGE (a)-[:CREATED]->(r2)
+            """
+        )
 
     @staticmethod
     def _recommend_products(tx, name):
@@ -97,32 +163,35 @@ class Neo4jClient:
         result = tx.run(query, name=name)
         return [record["report_title"] for record in result]
 
-# Modelos de dados
+# Modelos
 
 
-class UserData(BaseModel):
-    name: str = Field(..., min_length=3)
-    email: EmailStr
-    purchases: List[dict]
+class UserResponse(BaseModel):
+    message: str
+    data: dict
 
 
-class AdminData(BaseModel):
-    name: str = Field(..., min_length=3)
-    email: EmailStr
-    reports: List[dict]
+class AdminResponse(BaseModel):
+    message: str
+    data: dict
 
 
 class RecommendationResponse(BaseModel):
     recommendations: List[str]
 
-# Funções de autenticação e segurança
+# Obter token de API fake
 
 
-def create_jwt_token(username: str):
-    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    to_encode = {"exp": expire, "sub": username}
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
+def get_fake_token(username: str, password: str):
+    response = requests.post(
+        f"{FAKE_API_URL}/token", params={"username": username, "password": password})
+    if response.status_code == 200:
+        return response.json()["access_token"]
+    else:
+        raise HTTPException(status_code=response.status_code,
+                            detail="Unable to obtain token")
+
+# Autenticação JWT
 
 
 def get_current_user(token: str = Depends(oauth2_scheme)):
@@ -130,32 +199,19 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username: str = payload.get("sub")
         if username is None:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+            raise HTTPException(status_code=401, detail="Invalid token")
         return username
     except JWTError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+        raise HTTPException(status_code=401, detail="Invalid token")
 
-# Funções da API
-
-
-def get_fake_token(username: str, password: str):
-    try:
-        response = requests.post(
-            f"{FAKE_API_URL}/token", params={"username": username, "password": password}, timeout=10)
-        response.raise_for_status()
-        return response.json()["access_token"]
-    except requests.exceptions.RequestException as e:
-        raise HTTPException(
-            status_code=503, detail=f"Error connecting to external service: {str(e)}")
+# Rotas da API
 
 
 @app.get("/sync-user")
 async def sync_user(username: str, password: str):
     token = get_fake_token(username, password)
-    response = requests.get(
-        f"{FAKE_API_URL}/user", headers={"Authorization": f"Bearer {token}"}, timeout=10)
+    response = requests.get(f"{FAKE_API_URL}/user",
+                            headers={"Authorization": f"Bearer {token}"})
     if response.status_code == 200:
         user_data = response.json()["data"]
         client = Neo4jClient()
@@ -170,8 +226,8 @@ async def sync_user(username: str, password: str):
 @app.get("/sync-admin")
 async def sync_admin(username: str, password: str):
     token = get_fake_token(username, password)
-    response = requests.get(
-        f"{FAKE_API_URL}/admin", headers={"Authorization": f"Bearer {token}"}, timeout=10)
+    response = requests.get(f"{FAKE_API_URL}/admin",
+                            headers={"Authorization": f"Bearer {token}"})
     if response.status_code == 200:
         admin_data = response.json()["data"]
         client = Neo4jClient()
@@ -207,3 +263,12 @@ async def populate_db():
     client.populate_db()
     client.close()
     return {"status": "success", "message": "Database populated with sample data"}
+
+# Função para criar um JWT
+
+
+def create_jwt_token(username: str):
+    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode = {"exp": expire, "sub": username}
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt

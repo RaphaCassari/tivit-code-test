@@ -8,15 +8,18 @@
   "scripts": {
     "test": "echo \"No test specified\" && exit 0",
     "dev": "quasar dev",
-    "build": "quasar build"
+    "build": "quasar build",
+    "deploy": "npx quasar build -m pwa && npx gh-pages -d dist/pwa"
   },
   "dependencies": {
     "@quasar/extras": "^1.16.4",
+    "axios": "^1.7.7",
     "core-js": "^3.6.5",
     "quasar": "^1.0.0"
   },
   "devDependencies": {
-    "@quasar/app": "^2.0.0"
+    "@quasar/app": "^2.0.0",
+    "workbox-webpack-plugin": "^5.0.0"
   },
   "browserslist": [
     "last 10 Chrome versions",

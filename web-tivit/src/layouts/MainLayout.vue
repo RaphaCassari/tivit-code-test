@@ -45,6 +45,11 @@
 import EssentialLink from 'components/EssentialLink.vue'
 
 const linksData = [
+    {
+    title: 'Home',
+    icon: 'home',
+    link: '/#/'
+  },
   {
     title: 'User',
     icon: 'school',
@@ -52,7 +57,7 @@ const linksData = [
   },
     {
     title: 'Admin',
-    icon: 'school',
+    icon: 'notebook',
     link: '/#/recommendation_admin'
   }
 ]

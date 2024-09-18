@@ -5,7 +5,7 @@
       <q-card-section class="row items-center q-pb-md">
         <q-avatar size="56px" color="primary" icon="person" />
         <div class="q-ml-md">
-          <div class="text-h5">{{ jsonData.message }}</div>
+          <div class="text-h5">{{ sanitize(jsonData.message) }}</div>
         </div>
       </q-card-section>
 
@@ -17,8 +17,8 @@
               <q-icon name="person" />
             </q-item-section>
             <q-item-section>
-              <q-item-label><strong>Name:</strong> {{ jsonData.data.name }}</q-item-label>
-              <q-item-label caption><strong>Email:</strong> {{ jsonData.data.email }}</q-item-label>
+              <q-item-label><strong>Name:</strong> {{ sanitize(jsonData.data.name) }}</q-item-label>
+              <q-item-label caption><strong>Email:</strong> {{ sanitize(jsonData.data.email) }}</q-item-label>
             </q-item-section>
           </q-item>
         </q-list>
@@ -29,18 +29,15 @@
 
       <!-- Lista de compras -->
       <q-card-section>
-        <div class="text-h6 q-mb-md">Recent Purchases</div>
+        <div class="text-h6 q-mb-md">Purchases</div>
         <q-list bordered>
           <q-item v-for="purchase in jsonData.data.purchases" :key="purchase.id" clickable>
             <q-item-section avatar>
               <q-icon name="shopping_cart" />
             </q-item-section>
             <q-item-section>
-              <q-item-label>{{ purchase.item }}</q-item-label>
-              <q-item-label caption>{{ formatCurrency(purchase.price) }}</q-item-label>
-            </q-item-section>
-            <q-item-section side>
-              <q-icon name="chevron_right" />
+              <q-item-label>{{ sanitize(purchase.item) }}</q-item-label>
+              <q-item-label caption>Price: ${{ sanitize(purchase.price) }}</q-item-label>
             </q-item-section>
           </q-item>
         </q-list>
@@ -50,14 +47,14 @@
       <q-card-section>
         <div class="text-h6 q-mb-md">Recommended Products</div>
         <q-chip
-          v-for="(recommendation, index) in jsonData.recommendations"
+          v-for="(recommendation, index) in recommendations"
           :key="index"
           class="q-mb-xs"
           color="primary"
           text-color="white"
-          icon="thumb_up"
+          icon="star"
         >
-          {{ recommendation }}
+          {{ sanitize(recommendation) }}
         </q-chip>
       </q-card-section>
     </q-card>
@@ -65,28 +62,57 @@
 </template>
 
 <script>
+import axios from 'axios';
+
 export default {
   data() {
     return {
       jsonData: {
-        message: "Hello, user!",
+        message: "",
         data: {
-          name: "John Doe",
-          email: "john@example.com",
-          purchases: [
-            { id: 1, item: "Laptop", price: 2500 },
-            { id: 2, item: "Smartphone", price: 1200 },
-          ],
+          name: "",
+          email: "",
+          purchases: [],
         },
-        recommendations: ["Tablet", "Smartwatch"],
       },
+      recommendations: [],
+      loading: true,
+      error: null,
     };
   },
   methods: {
-    formatCurrency(value) {
-      return `R$ ${value.toFixed(2)}`;
+    // Método para sanitizar dados antes de exibir
+    sanitize(value) {
+      const div = document.createElement('div');
+      div.textContent = value;
+      return div.innerHTML;
     },
+    // Método para buscar os dados do usuário da API
+    async fetchUserData() {
+      try {
+        const response = await axios.get('http://localhost:8001/sync-user?username=user&password=userpass');
+        this.jsonData = response.data;
+        await this.fetchRecommendations(this.jsonData.data.name);
+        this.loading = false;
+      } catch (error) {
+        this.error = 'Failed to load user data.';
+        this.loading = false;
+      }
+    },
+    // Método para buscar recomendações da API
+    async fetchRecommendations(userName) {
+      try {
+        const response = await axios.get(`http://localhost:8001/user-recommendations?name=${encodeURIComponent(userName)}`);
+        this.recommendations = response.data.recommendations;
+      } catch (error) {
+        this.error = 'Failed to load recommendations.';
+      }
+    }
   },
+  mounted() {
+    // Busca os dados da API assim que o componente for montado
+    this.fetchUserData();
+  }
 };
 </script>
 
