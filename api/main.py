@@ -1,3 +1,4 @@
+from pydantic import BaseModel, Field, constr
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,7 +12,6 @@ from urllib.parse import quote, unquote
 import os
 
 from dotenv import load_dotenv
-import os
 
 load_dotenv()  # Carrega variáveis do .env
 
@@ -20,18 +20,8 @@ NEO4J_USER = os.getenv("NEO4J_USER")
 NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
 SECRET_KEY = os.getenv("SECRET_KEY")
 
-
-# Configurações Neo4j
-#NEO4J_URI = os.getenv("NEO4J_URI", "neo4j+s://a4051114.databases.neo4j.io")
-#NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
-#NEO4J_PASSWORD = os.getenv(
-#    "NEO4J_PASSWORD", "SRr0ul04xAaSdhOkmCvgFHjyZKaYFNOZXiE03JZXptA")
-
-# Configuração da API Fake
 FAKE_API_URL = os.getenv("FAKE_API_URL", "http://localhost:8000")
 
-# Configurações do JWT
-#SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
@@ -205,6 +195,11 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
         raise HTTPException(status_code=401, detail="Invalid token")
 
 # Rotas da API
+
+
+class UserCredentials(BaseModel):
+    username: constr(min_length=3, max_length=50, regex=r"^\w+$")
+    password: constr(min_length=8)
 
 
 @app.get("/sync-user")
